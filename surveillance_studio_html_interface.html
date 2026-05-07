@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>surveillance architect studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #f8f7f4;
+    --surface:   #ffffff;
+    --border:    #e8e5df;
+    --border-md: #d4d0c8;
+    --text:      #1a1916;
+    --muted:     #7a7870;
+    --faint:     #b8b5ad;
+    --accent:    #1a1916;
+    --live:      #2d6a4f;
+    --live-bg:   #d8f3dc;
+    --rec:       #c0392b;
+    --rec-bg:    #fdecea;
+    --active-border: #1a1916;
+    --active-bg: #f0ede8;
+    --mono:      'DM Mono', monospace;
+    --sans:      'DM Sans', sans-serif;
+  }
+
+  html, body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13px;
+  }
+
+  /* ── layout ── */
+  .app {
+    display: grid;
+    grid-template-rows: 48px 1fr 40px;
+    min-height: 100vh;
+  }
+
+  /* ── topbar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    color: var(--text);
+    text-transform: lowercase;
+  }
+  .logo span { color: var(--faint); }
+  .status-row { display: flex; align-items: center; gap: 20px; }
+  .status-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+  .dot.live { background: var(--live); animation: breathe 2s ease-in-out infinite; }
+  @keyframes breathe { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  /* ── body grid ── */
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    overflow: hidden;
+  }
+
+  /* ── main viewer ── */
+  .viewer {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .feed-wrap {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+    min-height: 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color .2s;
+  }
+  .feed-wrap.focused { border-color: var(--active-border); }
+
+  /* placeholder until real stream loads */
+  .feed-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    height: 100%;
+    min-height: 340px;
+  }
+  /* real stream — hidden until cam selected */
+  .feed-wrap img.stream {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+  }
+  .feed-wrap img.stream.active { display: block; }
+
+  .cam-tag {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .06em;
+    color: var(--muted);
+    background: rgba(255,255,255,.9);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 3px 8px;
+  }
+  .live-tag {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--live);
+    background: var(--live-bg);
+    border-radius: 3px;
+    padding: 3px 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .live-tag .ld { width: 5px; height: 5px; border-radius: 50%; background: var(--live); animation: breathe 1.2s ease-in-out infinite; }
+
+  .ip-tag {
+    position: absolute;
+    bottom: 12px;
+    left: 14px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--faint);
+  }
+
+  .placeholder-icon {
+    width: 56px;
+    height: 56px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .placeholder-icon svg { width: 24px; height: 24px; stroke: var(--faint); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .placeholder-text { font-size: 12px; color: var(--faint); font-family: var(--mono); }
+  .placeholder-sub { font-size: 10px; color: var(--border-md); font-family: var(--mono); }
+
+  /* scan line on feed */
+  .scan { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(45,106,79,.15), transparent); animation: scandown 4s linear infinite; pointer-events: none; }
+  @keyframes scandown { 0%{top:0%} 100%{top:100%} }
+
+  /* ── switcher ── */
+  .switcher {
+    display: flex;
+    gap: 6px;
+  }
+  .sw {
+    flex: 1;
+    padding: 9px 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .sw svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .sw:hover { background: var(--active-bg); color: var(--text); border-color: var(--border-md); }
+  .sw.active { background: var(--text); color: #fff; border-color: var(--text); }
+  .sw.grid-btn { flex: 0 0 44px; }
+
+  /* ── sidebar ── */
+  .sidebar {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+  }
+  .side-block { display: flex; flex-direction: column; gap: 8px; }
+  .side-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* thumbnails */
+  .thumb-list { display: flex; flex-direction: column; gap: 6px; }
+  .thumb {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all .15s;
+  }
+  .thumb:hover { border-color: var(--border-md); background: var(--active-bg); }
+  .thumb.active-t { border-color: var(--active-border); background: var(--active-bg); }
+  .thumb-preview {
+    width: 48px;
+    height: 36px;
+    background: var(--border);
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .thumb-preview svg { width: 16px; height: 16px; stroke: var(--muted); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .thumb-preview .tscan { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: rgba(45,106,79,.2); animation: scandown linear infinite; }
+  .thumb-info { flex: 1; min-width: 0; }
+  .thumb-name { font-size: 11px; font-weight: 500; color: var(--text); }
+  .thumb-sub { font-size: 10px; color: var(--faint); font-family: var(--mono); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thumb-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--live); flex-shrink: 0; animation: breathe 2s ease-in-out infinite; }
+
+  /* mirror */
+  .mirror-frame {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .mirror-screen {
+    aspect-ratio: 3/4;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    position: relative;
+  }
+  .mirror-screen svg { width: 32px; height: 32px; stroke: var(--border-md); fill: none; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
+  .mirror-label { font-size: 10px; color: var(--faint); font-family: var(--mono); }
+  .mirror-footer {
+    border-top: 1px solid var(--border);
+    padding: 7px 10px;
+    font-size: 10px;
+    color: var(--faint);
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .mirror-footer svg { width: 11px; height: 11px; stroke: var(--faint); fill: none; stroke-width: 1.5; }
+  .mirror-mscan { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,rgba(26,25,22,.06),transparent); animation: scandown 5s linear infinite; }
+
+  /* controls */
+  .ctrl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ctrl-btn {
+    padding: 8px 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--sans);
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .ctrl-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .ctrl-btn:hover { background: var(--active-bg); color: var(--text); border-color: var(--border-md); }
+  .ctrl-btn.rec-btn { color: var(--rec); border-color: #f5c6c2; background: var(--rec-bg); }
+  .ctrl-btn.rec-btn:hover { background: #fbd7d4; }
+  .ctrl-btn.rec-btn.recording { animation: recpulse 1s ease-in-out infinite; }
+  @keyframes recpulse { 0%,100%{border-color:#f5c6c2} 50%{border-color:var(--rec)} }
+
+  /* info row */
+  .info-row { display: flex; flex-direction: column; gap: 5px; }
+  .info-item { display: flex; justify-content: space-between; align-items: center; font-size: 10px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .info-item:last-child { border-bottom: none; }
+  .info-key { color: var(--muted); font-family: var(--mono); }
+  .info-val { color: var(--text); font-family: var(--mono); font-weight: 500; }
+
+  /* ── bottombar ── */
+  .bottombar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--faint);
+  }
+  .bottom-left { display: flex; gap: 20px; }
+  .bottom-item { display: flex; align-items: center; gap: 5px; }
+  .bottom-item svg { width: 11px; height: 11px; stroke: var(--faint); fill: none; stroke-width: 1.5; }
+
+  /* ── grid view ── */
+  .grid-view {
+    display: none;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 20px;
+    align-content: start;
+  }
+  .grid-view.visible { display: grid; }
+  .viewer.hidden { display: none; }
+
+  .grid-cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    aspect-ratio: 4/3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .15s;
+  }
+  .grid-cell:hover { border-color: var(--border-md); }
+  .grid-cell svg { width: 20px; height: 20px; stroke: var(--border-md); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .grid-cell-label { font-size: 10px; color: var(--faint); font-family: var(--mono); }
+  .grid-scan { position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,rgba(45,106,79,.12),transparent); animation: scandown linear infinite; pointer-events: none; }
+  .grid-tag { position: absolute; top: 8px; left: 10px; font-family: var(--mono); font-size: 9px; color: var(--muted); background: rgba(255,255,255,.85); border: 1px solid var(--border); border-radius: 3px; padding: 2px 6px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- topbar -->
+  <div class="topbar">
+    <div class="logo">surveillance <span>/</span> architect studio</div>
+    <div class="status-row">
+      <div class="status-item"><div class="dot live"></div> cam a</div>
+      <div class="status-item"><div class="dot live"></div> cam b</div>
+      <div class="status-item"><div class="dot live"></div> cam c</div>
+    </div>
+  </div>
+
+  <!-- body -->
+  <div class="body">
+
+    <!-- main viewer (single cam) -->
+    <div class="viewer" id="viewer-single">
+      <div class="feed-wrap focused" id="main-feed">
+        <div class="scan"></div>
+        <div class="feed-placeholder" id="feed-ph">
+          <div class="placeholder-icon">
+            <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          </div>
+          <span class="placeholder-text" id="ph-name">cam a — front</span>
+          <span class="placeholder-sub" id="ph-ip">192.168.1.101</span>
+        </div>
+        <!-- real stream: uncomment and set src when deploying -->
+        <!-- <img class="stream active" src="http://192.168.1.101/stream" id="main-stream"> -->
+        <div class="cam-tag" id="main-cam-tag">cam a — front · OV7670</div>
+        <div class="live-tag"><div class="ld"></div> live</div>
+        <div class="ip-tag" id="main-ip-tag">→ 192.168.1.101 (ESP32)</div>
+      </div>
+
+      <div class="switcher">
+        <button class="sw active" id="btn-a" onclick="switchCam('a')">
+          <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          a — front
+        </button>
+        <button class="sw" id="btn-b" onclick="switchCam('b')">
+          <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          b — corner
+        </button>
+        <button class="sw" id="btn-c" onclick="switchCam('c')">
+          <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          c — overhead
+        </button>
+        <button class="sw grid-btn" id="btn-grid" onclick="toggleGrid()" title="All feeds">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- grid view (all feeds) -->
+    <div class="grid-view" id="viewer-grid">
+      <div class="grid-cell" onclick="switchCam('a')">
+        <div class="grid-scan" style="animation-duration:3.5s"></div>
+        <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span class="grid-cell-label">front · OV7670</span>
+        <div class="grid-tag">a</div>
+      </div>
+      <div class="grid-cell" onclick="switchCam('b')">
+        <div class="grid-scan" style="animation-duration:4.2s"></div>
+        <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span class="grid-cell-label">corner · OV7670</span>
+        <div class="grid-tag">b</div>
+      </div>
+      <div class="grid-cell" onclick="switchCam('c')">
+        <div class="grid-scan" style="animation-duration:5s"></div>
+        <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        <span class="grid-cell-label">overhead · GC0307</span>
+        <div class="grid-tag">c</div>
+      </div>
+      <div class="grid-cell" style="cursor:default; border-style: dashed;">
+        <svg viewBox="0 0 24 24" style="stroke:var(--border-md)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span class="grid-cell-label" style="color:var(--border-md)">+ add cam d</span>
+      </div>
+    </div>
+
+    <!-- sidebar -->
+    <div class="sidebar">
+
+      <!-- thumbnails -->
+      <div class="side-block">
+        <div class="side-label">feeds</div>
+        <div class="thumb-list">
+
+          <div class="thumb active-t" id="th-a" onclick="switchCam('a')">
+            <div class="thumb-preview">
+              <div class="tscan" style="animation-duration:3s"></div>
+              <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </div>
+            <div class="thumb-info">
+              <div class="thumb-name">cam a</div>
+              <div class="thumb-sub">front · OV7670 FIFO</div>
+            </div>
+            <div class="thumb-dot"></div>
+          </div>
+
+          <div class="thumb" id="th-b" onclick="switchCam('b')">
+            <div class="thumb-preview">
+              <div class="tscan" style="animation-duration:4s"></div>
+              <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </div>
+            <div class="thumb-info">
+              <div class="thumb-name">cam b</div>
+              <div class="thumb-sub">corner · OV7670 FIFO</div>
+            </div>
+            <div class="thumb-dot" style="animation-delay:.4s"></div>
+          </div>
+
+          <div class="thumb" id="th-c" onclick="switchCam('c')">
+            <div class="thumb-preview">
+              <div class="tscan" style="animation-duration:5s"></div>
+              <svg viewBox="0 0 24 24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </div>
+            <div class="thumb-info">
+              <div class="thumb-name">cam c</div>
+              <div class="thumb-sub">overhead · GC0307 USB</div>
+            </div>
+            <div class="thumb-dot" style="animation-delay:.8s"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- subject mirror -->
+      <div class="side-block">
+        <div class="side-label">subject mirror</div>
+        <div class="mirror-frame">
+          <div class="mirror-screen">
+            <div class="mirror-mscan"></div>
+            <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span class="mirror-label">self-view active</span>
+          </div>
+          <div class="mirror-footer">
+            <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            mirrored → TFT in room
+          </div>
+        </div>
+      </div>
+
+      <!-- controls -->
+      <div class="side-block">
+        <div class="side-label">controls</div>
+        <div class="ctrl-grid">
+          <button class="ctrl-btn rec-btn" id="rec-btn" onclick="toggleRec()">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>
+            <span id="rec-label">record</span>
+          </button>
+          <button class="ctrl-btn" onclick="snapGrab(this)">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M3 9h2M19 9h2M9 3v2M15 3v2"/></svg>
+            grab
+          </button>
+          <button class="ctrl-btn" onclick="toggleMirror(this)">
+            <svg viewBox="0 0 24 24"><path d="M12 3v18M3 7l4 5-4 5M21 7l-4 5 4 5"/></svg>
+            flip
+          </button>
+          <button class="ctrl-btn" onclick="sendPrompt('How do I tune the OV7670 image brightness and white balance in the ESP32 sketch?')">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+            tune ↗
+          </button>
+        </div>
+      </div>
+
+      <!-- session info -->
+      <div class="side-block">
+        <div class="side-label">session</div>
+        <div class="info-row">
+          <div class="info-item">
+            <span class="info-key">hub</span>
+            <span class="info-val">192.168.1.100</span>
+          </div>
+          <div class="info-item">
+            <span class="info-key">protocol</span>
+            <span class="info-val">MJPEG/WS</span>
+          </div>
+          <div class="info-item">
+            <span class="info-key">resolution</span>
+            <span class="info-val" id="res-val">320×240</span>
+          </div>
+          <div class="info-item">
+            <span class="info-key">elapsed</span>
+            <span class="info-val" id="elapsed">00:00:00</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- bottombar -->
+  <div class="bottombar">
+    <div class="bottom-left">
+      <div class="bottom-item">
+        <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        raspberry pi 4 · hub
+      </div>
+      <div class="bottom-item">
+        <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        local network · 3 nodes active
+      </div>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+
+</div>
+
+<script>
+const cams = {
+  a: { label: 'cam a — front · OV7670', ip: '192.168.1.101 (ESP32)', res: '320×240', stream: 'http://192.168.1.101/stream' },
+  b: { label: 'cam b — corner · OV7670', ip: '192.168.1.102 (ESP32)', res: '320×240', stream: 'http://192.168.1.102/stream' },
+  c: { label: 'cam c — overhead · GC0307', ip: '192.168.1.100:8080 (Pi)', res: '640×480', stream: 'http://192.168.1.100:8080' },
+};
+
+let current = 'a';
+let recording = false;
+let gridMode = false;
+let startTime = Date.now();
+
+function switchCam(id) {
+  if (gridMode) toggleGrid();
+  current = id;
+  const c = cams[id];
+  document.getElementById('main-cam-tag').textContent = c.label;
+  document.getElementById('main-ip-tag').textContent = '→ ' + c.ip;
+  document.getElementById('ph-name').textContent = c.label;
+  document.getElementById('ph-ip').textContent = c.ip;
+  document.getElementById('res-val').textContent = c.res;
+
+  ['a','b','c'].forEach(k => {
+    document.getElementById('btn-'+k).className = 'sw' + (k===id?' active':'');
+    document.getElementById('th-'+k).className = 'thumb' + (k===id?' active-t':'');
+  });
+  document.getElementById('btn-grid').className = 'sw grid-btn';
+}
+
+function toggleGrid() {
+  gridMode = !gridMode;
+  document.getElementById('viewer-single').classList.toggle('hidden', gridMode);
+  document.getElementById('viewer-grid').classList.toggle('visible', gridMode);
+  document.getElementById('btn-grid').classList.toggle('active', gridMode);
+  if (!gridMode) {
+    document.getElementById('btn-'+current).className = 'sw active';
+  }
+}
+
+function toggleRec() {
+  recording = !recording;
+  const btn = document.getElementById('rec-btn');
+  btn.className = 'ctrl-btn rec-btn' + (recording ? ' recording' : '');
+  document.getElementById('rec-label').textContent = recording ? 'stop' : 'record';
+  if (recording) startTime = Date.now();
+}
+
+function snapGrab(el) {
+  el.style.color = 'var(--live)';
+  el.style.borderColor = 'var(--live)';
+  setTimeout(() => { el.style.color = ''; el.style.borderColor = ''; }, 800);
+}
+
+function toggleMirror(el) {
+  el.style.background = 'var(--active-bg)';
+  el.style.color = 'var(--text)';
+  setTimeout(() => { el.style.background = ''; el.style.color = ''; }, 600);
+}
+
+function pad(n) { return String(n).padStart(2,'0'); }
+
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent = pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+  if (recording) {
+    const s = Math.floor((Date.now()-startTime)/1000);
+    document.getElementById('elapsed').textContent = pad(Math.floor(s/3600))+':'+pad(Math.floor((s%3600)/60))+':'+pad(s%60);
+  }
+}
+tick();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
